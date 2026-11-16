@@ -23,6 +23,19 @@
 </section>
 
 <section class="card">
+  <h2 style="margin-top:0">应收清单核验（质控供数）</h2>
+  <p class="muted">
+    按医院与原检查 UID 维护应收 SOP 清单，核验分批到仓的检查及其嵌套引用是否齐全；
+    核验通过后可一键下载递归涉及的转换件。
+  </p>
+  <form method="get" action="{{ url_for('main.manifests_entry') }}">
+    <input type="text" name="hospital_code" required pattern="[A-Za-z0-9_\-]{2,20}"
+           placeholder="医院代号，例如 HOSP-A01">
+    <button type="submit">进入清单维护 / 核验</button>
+  </form>
+</section>
+
+<section class="card">
   <h2 style="margin-top:0">已登记医院与映射</h2>
   {% if hospitals %}
   <table>
@@ -33,7 +46,10 @@
         <td><code>{{ h.code }}</code></td>
         <td>{{ h.batch_count }}</td>
         <td>{{ h.created_at }}</td>
-        <td><a class="btn secondary" href="{{ url_for('main.hospital_mappings', hospital_code=h.code) }}">查看 UID 对应</a></td>
+        <td>
+          <a class="btn secondary" href="{{ url_for('main.hospital_mappings', hospital_code=h.code) }}">查看 UID 对应</a>
+          <a class="btn secondary" href="{{ url_for('main.hospital_manifests', hospital_code=h.code) }}">应收清单</a>
+        </td>
       </tr>
     {% endfor %}
     </tbody>

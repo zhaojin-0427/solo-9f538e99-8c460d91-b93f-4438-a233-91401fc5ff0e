@@ -5,8 +5,15 @@ Schema overview
 hospital        : one row per hospital code (mapping namespaces are per hospital)
 uid_mapping     : deterministic old-UID -> new-UID mapping, namespaced by hospital
 batch           : upload batch registry; only ``published`` batches are usable
-batch_file      : per-(hospital, SOP UID) canonical converted product record
+batch_file      : per-(hospital, SOP UID) canonical converted product record,
+                  including the instance's original study/series attribution and
+                  its SOP class UID (used by manifest verification)
 batch_item      : one row per file that made up a specific batch
+manifest        : QC expected-SOP list, keyed by (hospital, original study UID)
+manifest_item   : one expected original SOP Instance UID per row
+sop_reference   : nested SOP references found inside archived instances
+                  (referrer original SOP UID -> referenced original SOP UID plus
+                  the SOP Class UID the reference declares)
 """
 from __future__ import annotations
 
@@ -52,6 +59,9 @@ CREATE TABLE IF NOT EXISTS batch_file (
     stored_name       TEXT NOT NULL,
     original_filename TEXT NOT NULL,
     created_batch_id  INTEGER NOT NULL REFERENCES batch(id),
+    study_uid_old     TEXT,
+    series_uid_old    TEXT,
+    sop_class_uid     TEXT,
     UNIQUE (hospital_id, sop_uid_old)
 );
 
@@ -65,10 +75,55 @@ CREATE TABLE IF NOT EXISTS batch_item (
     UNIQUE (batch_id, ordinal)
 );
 
+CREATE TABLE IF NOT EXISTS manifest (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    hospital_id   INTEGER NOT NULL REFERENCES hospital(id),
+    study_uid_old TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (hospital_id, study_uid_old)
+);
+
+CREATE TABLE IF NOT EXISTS manifest_item (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    manifest_id INTEGER NOT NULL REFERENCES manifest(id) ON DELETE CASCADE,
+    ordinal     INTEGER NOT NULL,
+    sop_uid_old TEXT NOT NULL,
+    UNIQUE (manifest_id, ordinal),
+    UNIQUE (manifest_id, sop_uid_old)
+);
+
+CREATE TABLE IF NOT EXISTS sop_reference (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    hospital_id       INTEGER NOT NULL REFERENCES hospital(id),
+    sop_uid_old       TEXT NOT NULL,
+    ref_sop_uid_old   TEXT NOT NULL,
+    ref_sop_class_uid TEXT,
+    UNIQUE (hospital_id, sop_uid_old, ref_sop_uid_old)
+);
+
 CREATE INDEX IF NOT EXISTS idx_mapping_hospital ON uid_mapping(hospital_id);
 CREATE INDEX IF NOT EXISTS idx_batch_hospital   ON batch(hospital_id);
 CREATE INDEX IF NOT EXISTS idx_item_batch       ON batch_item(batch_id);
+CREATE INDEX IF NOT EXISTS idx_manifest_hospital ON manifest(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_manifest_item    ON manifest_item(manifest_id);
+CREATE INDEX IF NOT EXISTS idx_sop_reference    ON sop_reference(hospital_id, sop_uid_old);
 """
+
+# Columns added to batch_file after the initial release; kept as an idempotent
+# migration so databases created by older versions keep working.
+_BATCH_FILE_EXTRA_COLUMNS = {
+    "study_uid_old": "TEXT",
+    "series_uid_old": "TEXT",
+    "sop_class_uid": "TEXT",
+}
+
+
+def _migrate_batch_file(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(batch_file)")}
+    for name, ddl in _BATCH_FILE_EXTRA_COLUMNS.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE batch_file ADD COLUMN {name} {ddl}")
 
 
 def get_db() -> sqlite3.Connection:
@@ -99,6 +154,7 @@ def init_db(db_path: str) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.executescript(SCHEMA)
+        _migrate_batch_file(conn)
         conn.commit()
     finally:
         conn.close()

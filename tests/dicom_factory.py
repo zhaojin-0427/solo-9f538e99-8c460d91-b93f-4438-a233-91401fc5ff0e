@@ -36,6 +36,7 @@ def make_ct_file(
     for_uid: str | None = None,
     referenced_sop_uid: str | None = None,
     referenced_for_uid: str | None = None,
+    referenced_sop_class_uid: str = CTImageStorage,
     transfer_syntax: str = "1.2.840.10008.1.2.1",
     pixel_seed: int = 7,
     rows: int = 16,
@@ -89,7 +90,7 @@ def make_ct_file(
     # Nested reference sequences: ReferencedSOPSequence inside
     # ReferencedStudySequence-like structures, plus RT-study-style references.
     ref_instance = Dataset()
-    ref_instance.ReferencedSOPClassUID = CTImageStorage  # class UID, must stay
+    ref_instance.ReferencedSOPClassUID = referenced_sop_class_uid  # class UID, must stay
     ref_instance.ReferencedSOPInstanceUID = referenced_sop_uid
 
     ref_series = Dataset()

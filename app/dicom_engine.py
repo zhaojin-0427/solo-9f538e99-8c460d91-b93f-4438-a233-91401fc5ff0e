@@ -33,6 +33,9 @@ class FilePlan:
     sop_class_uid: str
     # old_uid -> (new_uid, kind); insertion order preserved for reporting
     mappings: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # (referenced SOP Instance UID, Referenced SOP Class UID declared alongside
+    # it or None) found at any nesting level, in first-seen order
+    references: list[tuple[str, str | None]] = field(default_factory=list)
 
 
 def sha256_file(path: str | Path) -> str:
@@ -86,6 +89,40 @@ def _ui_values(element: DataElement) -> list[str]:
     return [value]
 
 
+def _collect_sop_references(dataset: Dataset) -> list[tuple[str, str | None]]:
+    """Collect nested SOP references as (referenced SOP Instance UID, class).
+
+    Every dataset level is inspected (top level plus sequence items at any
+    depth).  Wherever a ``ReferencedSOPInstanceUID`` element appears, the
+    sibling ``ReferencedSOPClassUID`` of the same item is recorded as the
+    class the reference declares (``None`` when absent).
+    """
+    refs: list[tuple[str, str | None]] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    def visit(ds: Dataset) -> None:
+        ref_uid = getattr(ds, "ReferencedSOPInstanceUID", None)
+        if ref_uid not in (None, ""):
+            values = list(ref_uid) if _is_multi(ref_uid) else [ref_uid]
+            ref_class = getattr(ds, "ReferencedSOPClassUID", None)
+            ref_class_str = str(ref_class) if ref_class not in (None, "") else None
+            for value in values:
+                if value in (None, ""):
+                    continue
+                pair = (str(value), ref_class_str)
+                if pair not in seen:
+                    seen.add(pair)
+                    refs.append(pair)
+        for element in ds:
+            if element.VR == "SQ":
+                for item in element.value:
+                    if isinstance(item, Dataset):
+                        visit(item)
+
+    visit(dataset)
+    return refs
+
+
 def load_and_plan(path: str | Path, hospital_code: str, ordinal: int,
                   original_filename: str, sha256: str | None = None) -> tuple[Dataset, FilePlan]:
     """Read a DICOM file, validate it and compute its UID mapping plan."""
@@ -135,6 +172,8 @@ def load_and_plan(path: str | Path, hospital_code: str, ordinal: int,
         for old_uid in _ui_values(element):
             if old_uid not in plan.mappings:
                 plan.mappings[old_uid] = (derive_new_uid(hospital_code, old_uid), kind)
+
+    plan.references = _collect_sop_references(ds)
 
     return ds, plan
 

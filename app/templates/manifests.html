@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}应收清单维护 · {{ hospital_code }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h2 style="margin-top:0">医院 <code>{{ hospital_code }}</code> 的应收 SOP 清单</h2>
+  <p class="muted">
+    按"医院 + 原检查 UID"登记应收 SOP Instance UID 清单，用于分批到货到齐核验。
+    单院最多 {{ max_lists }} 份清单，每份最多 {{ max_instances }} 个实例；
+    同一检查再次提交即<strong>整份替换</strong>，保存失败不会改变已有清单。
+    清单持久化保存，服务重启后仍然有效。
+  </p>
+
+  <form method="post" action="{{ url_for('main.save_manifest', hospital_code=hospital_code) }}">
+    <p>
+      <label for="study_uid"><strong>原检查 UID（Study Instance UID）</strong></label><br>
+      <input type="text" id="study_uid" name="study_uid" required style="width:520px"
+             placeholder="例如 1.2.840.113619.2.55.3…">
+    </p>
+    <p>
+      <label for="sop_uids"><strong>应收 SOP Instance UID 清单</strong>（每行一个，或用逗号/空白分隔；自动去重）</label><br>
+      <textarea id="sop_uids" name="sop_uids" required rows="10"
+                style="width:100%; font-family:ui-monospace, Menlo, monospace; font-size:12px;"
+                placeholder="1.2.3.4.5&#10;1.2.3.4.6&#10;…"></textarea>
+    </p>
+    <button type="submit">保存 / 整份替换</button>
+  </form>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0">已登记清单（{{ manifests|length }} / {{ max_lists }} 份）</h3>
+  {% if manifests %}
+  <table>
+    <thead><tr><th>原检查 UID</th><th style="width:90px">实例数</th><th style="width:160px">最近更新</th><th style="width:200px">操作</th></tr></thead>
+    <tbody>
+    {% for m in manifests %}
+      <tr>
+        <td><code>{{ m.study_uid_old }}</code></td>
+        <td>{{ m.item_count }}</td>
+        <td>{{ m.updated_at }}</td>
+        <td>
+          <a class="btn" href="{{ url_for('main.manifest_detail', hospital_code=hospital_code, study_uid=m.study_uid_old) }}">核验 / 供数</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">该院尚无应收清单，使用上方表单录入第一份。</p>
+  {% endif %}
+</section>
+<p>
+  <a class="btn secondary" href="{{ url_for('main.hospital_mappings', hospital_code=hospital_code) }}">查看该院 UID 映射</a>
+  <a class="btn secondary" href="{{ url_for('main.index') }}">返回首页</a>
+</p>
+{% endblock %}

@@ -1,4 +1,5 @@
-"""HTTP routes: browser upload, batch inspection, mapping view, downloads."""
+"""HTTP routes: browser upload, batch inspection, mapping view, downloads,
+and QC expected-SOP manifest maintenance / verification / supply download."""
 from __future__ import annotations
 
 import os
@@ -20,8 +21,14 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
+from . import manifests as manifest_svc
 from . import services
-from .config import HOSPITAL_CODE_REGEX, MAX_FILES_PER_BATCH
+from .config import (
+    HOSPITAL_CODE_REGEX,
+    MAX_FILES_PER_BATCH,
+    MAX_MANIFEST_INSTANCES,
+    MAX_MANIFESTS_PER_HOSPITAL,
+)
 from .db import get_db
 from .dicom_engine import DicomValidationError
 
@@ -166,3 +173,133 @@ def download(batch_code: str, ordinal: int):
 def too_large(_exc):
     flash("上传文件超过服务器允许的大小上限。", "error")
     return redirect(url_for("main.index"))
+
+
+# ---------------------------------------------------------------------------
+# 应收 SOP 清单：维护、核验、供数下载
+# ---------------------------------------------------------------------------
+
+@bp.route("/manifests")
+def manifests_entry():
+    """Entry point: jump to a hospital's manifest page by code."""
+    hospital_code = (request.args.get("hospital_code") or "").strip()
+    if not _HOSPITAL_RE.match(hospital_code):
+        flash("请输入合法的医院代号（2-20 位字母、数字、下划线或短横线）。", "error")
+        return redirect(url_for("main.index"))
+    return redirect(url_for("main.hospital_manifests", hospital_code=hospital_code))
+
+
+@bp.route("/hospitals/<hospital_code>/manifests")
+def hospital_manifests(hospital_code: str):
+    if not _HOSPITAL_RE.match(hospital_code):
+        abort(404)
+    conn = get_db()
+    manifests = manifest_svc.list_manifests(conn, hospital_code)
+    return render_template(
+        "manifests.html",
+        hospital_code=hospital_code,
+        manifests=manifests,
+        max_lists=MAX_MANIFESTS_PER_HOSPITAL,
+        max_instances=MAX_MANIFEST_INSTANCES,
+    )
+
+
+@bp.route("/hospitals/<hospital_code>/manifests", methods=["POST"])
+def save_manifest(hospital_code: str):
+    if not _HOSPITAL_RE.match(hospital_code):
+        abort(404)
+    study_uid = (request.form.get("study_uid") or "").strip()
+    sop_uids = manifest_svc.parse_sop_uid_text(request.form.get("sop_uids") or "")
+    conn = get_db()
+    try:
+        manifest_svc.replace_manifest(conn, hospital_code, study_uid, sop_uids)
+    except manifest_svc.ManifestError as exc:
+        flash(f"清单未保存（已有清单保持不变）：{exc}", "error")
+    except Exception:  # pragma: no cover - defensive
+        current_app.logger.exception("manifest save failed")
+        flash("服务器内部错误，清单未保存，已有清单保持不变。", "error")
+    else:
+        flash(
+            f"检查 {study_uid} 的应收清单已整份保存（{len(sop_uids)} 个实例）。",
+            "success",
+        )
+    return redirect(url_for("main.hospital_manifests", hospital_code=hospital_code))
+
+
+@bp.route("/hospitals/<hospital_code>/manifests/<study_uid>")
+def manifest_detail(hospital_code: str, study_uid: str):
+    if not _HOSPITAL_RE.match(hospital_code):
+        abort(404)
+    conn = get_db()
+    try:
+        verdict = manifest_svc.verify_manifest(conn, hospital_code, study_uid)
+    except manifest_svc.ManifestNotFound:
+        abort(404)
+    manifest = manifest_svc.get_manifest(conn, hospital_code, study_uid)
+    return render_template(
+        "manifest_detail.html",
+        hospital_code=hospital_code,
+        study_uid=study_uid,
+        manifest=manifest,
+        verdict=verdict,
+        uid_text="\n".join(verdict.own_items),
+        max_instances=MAX_MANIFEST_INSTANCES,
+    )
+
+
+@bp.route("/hospitals/<hospital_code>/manifests/<study_uid>/delete", methods=["POST"])
+def delete_manifest(hospital_code: str, study_uid: str):
+    if not _HOSPITAL_RE.match(hospital_code):
+        abort(404)
+    conn = get_db()
+    if manifest_svc.delete_manifest(conn, hospital_code, study_uid):
+        flash(f"检查 {study_uid} 的应收清单已删除。", "info")
+    else:
+        flash("清单不存在，无需删除。", "error")
+    return redirect(url_for("main.hospital_manifests", hospital_code=hospital_code))
+
+
+@bp.route("/hospitals/<hospital_code>/manifests/<study_uid>/download")
+def manifest_download(hospital_code: str, study_uid: str):
+    if not _HOSPITAL_RE.match(hospital_code):
+        abort(404)
+    conn = get_db()
+    try:
+        # Re-verified on every download so a changed target list or a newly
+        # archived instance is reflected immediately.
+        verdict = manifest_svc.verify_manifest(conn, hospital_code, study_uid)
+    except manifest_svc.ManifestNotFound:
+        abort(404)
+    if not verdict.ok:
+        flash(
+            f"核验未通过（{len(verdict.defects)} 项问题），暂不可供数下载。",
+            "error",
+        )
+        return redirect(
+            url_for(
+                "main.manifest_detail",
+                hospital_code=hospital_code,
+                study_uid=study_uid,
+            )
+        )
+    try:
+        archive = manifest_svc.build_supply_zip(verdict)
+    except OSError:
+        current_app.logger.exception("supply zip build failed")
+        flash("成品文件读取失败，请重新核验后再试。", "error")
+        return redirect(
+            url_for(
+                "main.manifest_detail",
+                hospital_code=hospital_code,
+                study_uid=study_uid,
+            )
+        )
+    response = send_file(
+        archive,
+        as_attachment=True,
+        download_name=f"supply_{hospital_code}_{study_uid}.zip",
+        mimetype="application/zip",
+    )
+    # Make sure the spooled temp file is released after the response is sent.
+    response.call_on_close(archive.close)
+    return response

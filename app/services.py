@@ -151,7 +151,7 @@ def process_batch(conn: sqlite3.Connection, hospital_code: str,
             conflicts, reused = [], []
             for plan in plans:
                 row = conn.execute(
-                    "SELECT bf.file_sha256, b.batch_code, bf.id "
+                    "SELECT bf.id, bf.file_sha256, bf.study_uid_old, b.batch_code "
                     "FROM batch_file bf JOIN batch b ON b.id = bf.created_batch_id "
                     "JOIN hospital h ON h.id = bf.hospital_id "
                     "WHERE h.code = ? AND bf.sop_uid_old = ?",
@@ -203,6 +203,20 @@ def process_batch(conn: sqlite3.Connection, hospital_code: str,
                         None,
                     )
                     if existing is not None:
+                        # Rows created before attribution tracking existed are
+                        # backfilled from the (byte-identical) re-upload so the
+                        # archive becomes verifiable without a re-conversion.
+                        if existing["study_uid_old"] is None:
+                            conn.execute(
+                                "UPDATE batch_file SET study_uid_old = ?, "
+                                "series_uid_old = ?, sop_class_uid = ? WHERE id = ?",
+                                (
+                                    plan.study_uid,
+                                    plan.series_uid,
+                                    plan.sop_class_uid,
+                                    existing["id"],
+                                ),
+                            )
                         batch_file_rows.append((plan, existing))
                         continue
 
@@ -216,8 +230,9 @@ def process_batch(conn: sqlite3.Connection, hospital_code: str,
                     )
                     cur = conn.execute(
                         "INSERT INTO batch_file(hospital_id, sop_uid_old, sop_uid_new, "
-                        "file_sha256, stored_name, original_filename, created_batch_id) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        "file_sha256, stored_name, original_filename, created_batch_id, "
+                        "study_uid_old, series_uid_old, sop_class_uid) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             hospital_id,
                             plan.sop_uid,
@@ -226,9 +241,28 @@ def process_batch(conn: sqlite3.Connection, hospital_code: str,
                             stored_name,
                             plan.original_filename,
                             batch_id,
+                            plan.study_uid,
+                            plan.series_uid,
+                            plan.sop_class_uid,
                         ),
                     )
                     batch_file_rows.append((plan, {"id": int(cur.lastrowid)}))
+
+                # Register nested SOP references of every archived instance so
+                # manifest verification can resolve them without re-reading
+                # the products.  Identical bytes yield identical references,
+                # so re-uploads converge; a later non-NULL class fills gaps.
+                for plan in plans:
+                    for ref_uid, ref_class in plan.references:
+                        conn.execute(
+                            "INSERT INTO sop_reference(hospital_id, sop_uid_old, "
+                            "ref_sop_uid_old, ref_sop_class_uid) VALUES (?, ?, ?, ?) "
+                            "ON CONFLICT(hospital_id, sop_uid_old, ref_sop_uid_old) "
+                            "DO UPDATE SET ref_sop_class_uid = "
+                            "COALESCE(excluded.ref_sop_class_uid, "
+                            "sop_reference.ref_sop_class_uid)",
+                            (hospital_id, plan.sop_uid, ref_uid, ref_class),
+                        )
 
                 for plan, row in batch_file_rows:
                     conn.execute(

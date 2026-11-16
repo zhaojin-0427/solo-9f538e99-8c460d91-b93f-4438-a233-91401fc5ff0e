@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}清单核验 · {{ study_uid }}{% endblock %}
+{% block content %}
+<section class="card">
+  <h2 style="margin-top:0">应收清单核验</h2>
+  <p class="muted">
+    医院：<strong>{{ hospital_code }}</strong> ｜ 原检查 UID：<code>{{ study_uid }}</code> ｜
+    清单实例：{{ verdict.own_items|length }} 个 ｜ 最近更新：{{ manifest.updated_at }}
+  </p>
+
+  {% if verdict.ok %}
+  <div class="flash success" style="font-size:15px">
+    <strong>核验通过，可供 {{ verdict.supply_count }} 份</strong>（本清单 {{ verdict.own_items|length }} 份，
+    递归引用涉及 {{ verdict.supply_count - verdict.own_items|length }} 份）。
+  </div>
+  <table>
+    <thead><tr><th>涉及检查（原检查 UID）</th><th style="width:120px">可供实例数</th></tr></thead>
+    <tbody>
+    {% for study, count in verdict.supply_by_study.items() %}
+      <tr>
+        <td><code>{{ study }}</code>{% if study == study_uid %} <span class="kind">本清单</span>{% endif %}</td>
+        <td>{{ count }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p style="margin-top:14px">
+    <a class="btn" href="{{ url_for('main.manifest_download', hospital_code=hospital_code, study_uid=study_uid) }}">
+      下载递归涉及转换件（ZIP，{{ verdict.supply_count }} 份）
+    </a>
+  </p>
+  <p class="muted">ZIP 内每份成品以新 SOP UID 命名，并附 manifest.json 记录原→新 UID、来源批次与 SHA-256。</p>
+  {% else %}
+  <div class="flash error">
+    <strong>核验未通过，共 {{ verdict.defects|length }} 项问题，暂不可供数。</strong>
+  </div>
+  <table>
+    <thead><tr><th style="width:90px">类别</th><th style="width:38%">位置</th><th>说明</th></tr></thead>
+    <tbody>
+    {% for d in verdict.defects %}
+      <tr>
+        <td><span class="kind">{{ d.category }}</span></td>
+        <td><code>{{ d.location }}</code></td>
+        <td>{{ d.message }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0">清单实例（{{ verdict.own_items|length }} 个）</h3>
+  <table>
+    <thead><tr><th style="width:60px">#</th><th>应收 SOP Instance UID（原 UID）</th></tr></thead>
+    <tbody>
+    {% for uid in verdict.own_items %}
+      <tr><td>{{ loop.index }}</td><td><code>{{ uid }}</code></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0">整份替换本清单</h3>
+  <form method="post" action="{{ url_for('main.save_manifest', hospital_code=hospital_code) }}">
+    <input type="hidden" name="study_uid" value="{{ study_uid }}">
+    <p>
+      <textarea name="sop_uids" required rows="8"
+                style="width:100%; font-family:ui-monospace, Menlo, monospace; font-size:12px;">{{ uid_text }}</textarea>
+    </p>
+    <p class="muted">提交后整份替换当前清单（最多 {{ max_instances }} 个实例）；保存失败不会改变现有清单。</p>
+    <button type="submit">整份替换</button>
+  </form>
+  <form method="post" action="{{ url_for('main.delete_manifest', hospital_code=hospital_code, study_uid=study_uid) }}"
+        onsubmit="return confirm('确定删除该检查的整份应收清单？');" style="margin-top:10px">
+    <button type="submit" style="background:var(--danger)">删除本清单</button>
+  </form>
+</section>
+<p><a class="btn secondary" href="{{ url_for('main.hospital_manifests', hospital_code=hospital_code) }}">返回该院清单列表</a></p>
+{% endblock %}

@@ -22,6 +22,10 @@ DB_PATH = _env_path("DICOM_DB_PATH", DATA_DIR / "registry.db")
 
 # Business limits from the specification.
 MAX_FILES_PER_BATCH = 10
+# Expected-SOP manifest (QC) limits: per hospital at most 20 study lists,
+# each list at most 100 expected SOP instances.
+MAX_MANIFESTS_PER_HOSPITAL = 20
+MAX_MANIFEST_INSTANCES = 100
 # Hard cap for a single uploaded file (500 MB).
 MAX_CONTENT_LENGTH = int(os.environ.get("DICOM_MAX_UPLOAD_BYTES", 500 * 1024 * 1024))
 
