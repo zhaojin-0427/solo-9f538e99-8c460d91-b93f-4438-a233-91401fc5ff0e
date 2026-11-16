@@ -1,0 +1,2 @@
+# Test-only dependencies (the application image itself only needs requirements.txt).
+numpy==2.4.6

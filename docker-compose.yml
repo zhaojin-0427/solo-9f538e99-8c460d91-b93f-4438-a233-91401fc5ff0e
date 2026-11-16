@@ -1,0 +1,23 @@
+services:
+  dicom-gateway:
+    build: .
+    image: dicom-uid-gateway:latest
+    container_name: dicom-uid-gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      # SQLite database, staging area and published products all persist here.
+      - dicom-data:/data
+    environment:
+      DICOM_DATA_DIR: /data
+      DICOM_MAX_UPLOAD_BYTES: "524288000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=5)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  dicom-data:

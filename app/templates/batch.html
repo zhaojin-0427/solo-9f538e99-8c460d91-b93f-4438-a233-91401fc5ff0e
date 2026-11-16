@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2 style="margin-top:0">批次 <code>{{ batch.batch_code }}</code></h2>
+  <p class="muted">
+    医院：<strong>{{ batch.hospital_code }}</strong> ｜ 状态：
+    <span class="kind">{{ batch.status }}</span> ｜ 文件数：{{ batch.file_count }} ｜
+    发布时间：{{ batch.published_at or batch.created_at }}
+  </p>
+
+  <h3>转换成品（{{ items|length }} 份）</h3>
+  <table>
+    <thead>
+      <tr><th>#</th><th>原始文件名</th><th>原 SOP Instance UID</th><th>新 SOP Instance UID</th><th>SHA-256</th><th>下载</th></tr>
+    </thead>
+    <tbody>
+    {% for it in items %}
+      <tr>
+        <td>{{ it.ordinal }}</td>
+        <td>{{ it.original_filename }}</td>
+        <td><code>{{ it.sop_uid_old }}</code></td>
+        <td><code>{{ it.sop_uid_new }}</code></td>
+        <td><code style="font-size:11px">{{ it.file_sha256[:16] }}…</code></td>
+        <td><a class="btn secondary" href="{{ url_for('main.download', batch_code=batch.batch_code, ordinal=it.ordinal) }}">下载</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0">本批次 UID 引用对应（旧 → 新）</h3>
+  <table>
+    <thead><tr><th style="width:140px">类型</th><th>原 UID</th><th>新 UID</th></tr></thead>
+    <tbody>
+    {% for m in mappings %}
+      <tr>
+        <td><span class="kind">{{ m.uid_kind }}</span></td>
+        <td><code>{{ m.old_uid }}</code></td>
+        <td><code>{{ m.new_uid }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted" style="margin-bottom:0">
+    <a href="{{ url_for('main.hospital_mappings', hospital_code=batch.hospital_code) }}">
+      查看该院全部 UID 映射（含跨批次预留的未入库引用）
+    </a>
+  </p>
+</section>
+<p><a class="btn secondary" href="{{ url_for('main.index') }}">返回首页</a></p>
+{% endblock %}

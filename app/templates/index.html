@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2 style="margin-top:0">新建转换批次</h2>
+  <form method="post" action="{{ url_for('main.upload') }}" enctype="multipart/form-data">
+    <p>
+      <label for="hospital_code"><strong>医院代号</strong></label><br>
+      <input type="text" id="hospital_code" name="hospital_code" required
+             pattern="[A-Za-z0-9_\-]{2,20}" placeholder="例如 HOSP-A01">
+    </p>
+    <p>
+      <label><strong>DICOM 文件（未压缩 CT，最多 {{ max_files }} 份）</strong></label><br>
+      <input type="file" name="dicom_files" multiple required
+             accept=".dcm,application/dicom">
+    </p>
+    <p class="muted">
+      规则：仅接受未压缩 CT；服务会按医院为检查、序列、实例及参考坐标系等 UID
+      分配合法新值并改写嵌套引用；类 UID、传输语法 UID 与像素字节保持不变。
+      同院同 SOP 同字节重传返回原成品，异字节整批冲突。
+    </p>
+    <button type="submit">上传并转换</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 style="margin-top:0">已登记医院与映射</h2>
+  {% if hospitals %}
+  <table>
+    <thead><tr><th>医院代号</th><th>已发布批次数</th><th>创建时间</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for h in hospitals %}
+      <tr>
+        <td><code>{{ h.code }}</code></td>
+        <td>{{ h.batch_count }}</td>
+        <td>{{ h.created_at }}</td>
+        <td><a class="btn secondary" href="{{ url_for('main.hospital_mappings', hospital_code=h.code) }}">查看 UID 对应</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">尚无医院登记，完成第一次上传后自动创建。</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2 style="margin-top:0">最近批次（仅显示完整发布的批次）</h2>
+  {% if batches %}
+  <table>
+    <thead><tr><th>批次号</th><th>医院</th><th>文件数</th><th>发布时间</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for b in batches %}
+      <tr>
+        <td><code>{{ b.batch_code }}</code></td>
+        <td>{{ b.hospital_code }}</td>
+        <td>{{ b.file_count }}</td>
+        <td>{{ b.published_at or b.created_at }}</td>
+        <td><a class="btn secondary" href="{{ url_for('main.batch_detail', batch_code=b.batch_code) }}">批次详情/下载</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">尚无已发布批次。</p>
+  {% endif %}
+</section>
+{% endblock %}

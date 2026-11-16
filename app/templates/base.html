@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}研究影像库 UID 隔离转换{% endblock %}</title>
+  <style>
+    :root { --border:#d0d7de; --bg:#f6f8fa; --accent:#0969da; --danger:#cf222e; --ok:#1a7f37; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+           margin: 0; color: #1f2328; background: var(--bg); }
+    header { background: #24292f; color: #fff; padding: 14px 24px; }
+    header a { color: #fff; text-decoration: none; font-weight: 600; }
+    main { max-width: 1080px; margin: 24px auto; padding: 0 16px; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 8px;
+            padding: 20px; margin-bottom: 20px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left;
+             vertical-align: top; word-break: break-all; }
+    th { background: var(--bg); }
+    code { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 12px; }
+    input[type=text] { width: 280px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+    input[type=file] { margin: 10px 0; }
+    button, .btn { background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+            padding: 9px 18px; font-size: 14px; cursor: pointer; text-decoration: none; display:inline-block; }
+    .btn.secondary { background: #57606a; }
+    .flash { padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; }
+    .flash.error { background: #ffebe9; color: var(--danger); border: 1px solid #ffabaf; }
+    .flash.success { background: #dafbe1; color: var(--ok); border: 1px solid #aceebb; }
+    .flash.info { background: #ddf4ff; color: var(--accent); border: 1px solid #b6e3ff; }
+    .muted { color: #57606a; font-size: 13px; }
+    .kind { display:inline-block; padding: 2px 8px; border-radius: 999px; background: var(--bg);
+            border: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
+  </style>
+</head>
+<body>
+<header><a href="{{ url_for('main.index') }}">研究影像库 · DICOM UID 隔离转换平台</a></header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

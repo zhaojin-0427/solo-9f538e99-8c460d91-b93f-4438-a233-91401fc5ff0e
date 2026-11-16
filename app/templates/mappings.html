@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2 style="margin-top:0">医院 <code>{{ hospital_code }}</code> 的全部 UID 映射</h2>
+  <p class="muted">
+    映射按医院隔离并持久化：同院跨批次与重启后保持不变；其他医院的 UID 不会混用。
+    表中也包含被引用但对应实体未入库的 UID 预留映射。
+  </p>
+  <table>
+    <thead><tr><th style="width:150px">类型</th><th>原 UID（含未入库引用）</th><th>新 UID</th><th style="width:150px">首次登记时间</th></tr></thead>
+    <tbody>
+    {% for m in mappings %}
+      <tr>
+        <td><span class="kind">{{ m.uid_kind }}</span></td>
+        <td><code>{{ m.old_uid }}</code></td>
+        <td><code>{{ m.new_uid }}</code></td>
+        <td>{{ m.created_at }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">暂无映射记录。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h3 style="margin-top:0">该医院的批次</h3>
+  {% if batches %}
+  <table>
+    <thead><tr><th>批次号</th><th>文件数</th><th>发布时间</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for b in batches %}
+      <tr>
+        <td><code>{{ b.batch_code }}</code></td>
+        <td>{{ b.file_count }}</td>
+        <td>{{ b.published_at or b.created_at }}</td>
+        <td><a class="btn secondary" href="{{ url_for('main.batch_detail', batch_code=b.batch_code) }}">详情/下载</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">该医院暂无已发布批次。</p>
+  {% endif %}
+</section>
+<p><a class="btn secondary" href="{{ url_for('main.index') }}">返回首页</a></p>
+{% endblock %}
